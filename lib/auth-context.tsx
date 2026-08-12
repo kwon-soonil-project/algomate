@@ -27,6 +27,15 @@ function mapUser(user: User): AppUser {
   };
 }
 
+function sameUser(current: AppUser | null, next: AppUser | null) {
+  if (current === next) return true;
+  if (!current || !next) return false;
+  return current.id === next.id
+    && current.email === next.email
+    && current.name === next.name
+    && current.avatarUrl === next.avatarUrl;
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AppUser | null>(null);
   const [loading, setLoading] = useState(true);
@@ -43,13 +52,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
+    const updateUser = (next: AppUser | null) => {
+      setUser((current) => sameUser(current, next) ? current : next);
+    };
+
     supabase.auth.getUser().then(({ data }) => {
-      setUser(data.user ? mapUser(data.user) : null);
+      updateUser(data.user ? mapUser(data.user) : null);
       setLoading(false);
     });
 
     const { data } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ? mapUser(session.user) : null);
+      updateUser(session?.user ? mapUser(session.user) : null);
       setLoading(false);
     });
     return () => data.subscription.unsubscribe();

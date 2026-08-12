@@ -52,6 +52,7 @@ export function GitHubImportModal({ studyId, open, onClose, initialRepoUrl = "",
           <div className="github-structure-title"><FolderGit2 size={15} /> 인식하는 폴더 구조</div>
           <code>week01/swea1529/minji.java</code>
           <code>week01/swea1529/junho.java</code>
+          <code>week01/swea1529/minji/Main.java</code>
           <code>week02/boj1260/minji.java</code>
         </div>
         <label className="form-group">

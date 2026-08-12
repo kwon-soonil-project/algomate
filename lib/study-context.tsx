@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { demoState } from "./demo-data";
 import { makeSampleGitHubEntries } from "./github-import";
 import { useAuth } from "./auth-context";
@@ -55,14 +55,16 @@ export function StudyProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const supabase = useMemo(() => getSupabaseBrowserClient(), []);
+  const userId = user?.id ?? null;
+  const loadedUserIdRef = useRef<string | null>(null);
 
   const loadRemoteState = useCallback(async () => {
-    if (!supabase || !user) return;
+    if (!supabase || !userId) return;
     setError(null);
     const { data: memberships, error: membershipError } = await supabase
       .from("study_members")
       .select("role, studies(*)")
-      .eq("user_id", user.id);
+      .eq("user_id", userId);
     if (membershipError) throw membershipError;
 
     const studies = (memberships ?? []).flatMap((row: any) => {
@@ -153,10 +155,10 @@ export function StudyProvider({ children }: { children: React.ReactNode }) {
       code: row.code, filePath: row.file_path, htmlUrl: row.html_url, blobSha: row.blob_sha, syncedAt: row.synced_at,
     }));
     setState({ studies, members, weeks, problems, submissions, comments, githubSolutions });
-  }, [supabase, user]);
+  }, [supabase, userId]);
 
   const refresh = useCallback(async () => {
-    if (!user) return;
+    if (!userId) return;
     try {
       if (isDemo) setState(readDemoState());
       else await loadRemoteState();
@@ -165,28 +167,31 @@ export function StudyProvider({ children }: { children: React.ReactNode }) {
     } finally {
       setLoading(false);
     }
-  }, [isDemo, loadRemoteState, user]);
+  }, [isDemo, loadRemoteState, userId]);
 
   useEffect(() => {
     if (authLoading) return;
-    if (!user) {
+    if (!userId) {
+      loadedUserIdRef.current = null;
       setState({ studies: [], members: [], weeks: [], problems: [], submissions: [], comments: [], githubSolutions: [] });
       setLoading(false);
       return;
     }
+    if (loadedUserIdRef.current === userId) return;
+    loadedUserIdRef.current = userId;
     setLoading(true);
     void refresh();
-  }, [authLoading, refresh, user]);
+  }, [authLoading, refresh, userId]);
 
   useEffect(() => {
-    if (!supabase || !user) return;
+    if (!supabase || !userId) return;
     const channel = supabase
-      .channel(`algomate-live-${user.id}`)
+      .channel(`algomate-live-${userId}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "submissions" }, () => void loadRemoteState())
       .on("postgres_changes", { event: "*", schema: "public", table: "comments" }, () => void loadRemoteState())
       .subscribe();
     return () => { void supabase.removeChannel(channel); };
-  }, [loadRemoteState, supabase, user]);
+  }, [loadRemoteState, supabase, userId]);
 
   const updateDemo = useCallback(<T,>(mutate: (current: StudyState) => [StudyState, T]) => {
     const current = readDemoState();

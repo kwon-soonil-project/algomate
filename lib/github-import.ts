@@ -9,9 +9,20 @@ const extensionLanguages: Record<string, string> = {
   cc: "cpp",
   c: "c",
   kt: "kotlin",
+  kts: "kotlin",
   go: "go",
   rs: "rust",
+  swift: "swift",
+  cs: "csharp",
+  rb: "ruby",
+  php: "php",
 };
+
+const ignoredPathSegments = new Set([
+  ".git", ".github", ".gradle", ".idea", "build", "dist", "node_modules", "out", "target",
+]);
+
+const genericSourceDirectories = new Set(["src", "main", "test", "java", "kotlin", "solution", "solutions"]);
 
 export interface GitHubTreeItem {
   path: string;
@@ -57,22 +68,27 @@ export function parseStudyTree(tree: GitHubTreeItem[], rootPath = "") {
   for (const item of tree) {
     if (item.type !== "blob" || !item.path.startsWith(prefix)) continue;
     const relative = item.path.slice(prefix.length);
-    const parts = relative.split("/");
-    if (parts.length !== 3) continue;
-    const weekMatch = parts[0].match(/^week[-_ ]?0*(\d+)$/i);
+    const parts = relative.split("/").filter(Boolean);
+    if (parts.length < 3 || parts.some((part) => ignoredPathSegments.has(part.toLowerCase()))) continue;
+    const weekMatch = parts[0].match(/^week[-_ ]?0*(\d+)$/i) ?? parts[0].match(/^0*(\d+)[-_ ]?주차$/i);
     if (!weekMatch) continue;
-    const fileMatch = parts[2].match(/^(.+)\.([a-z0-9]+)$/i);
+    const fileName = parts.at(-1)!;
+    const fileMatch = fileName.match(/^(.+)\.([a-z0-9]+)$/i);
     if (!fileMatch) continue;
     const language = extensionLanguages[fileMatch[2].toLowerCase()];
     if (!language) continue;
     if ((item.size ?? 0) > 500_000) continue;
     const metadata = problemMetadata(parts[1]);
+    const firstCodeSegment = parts[2];
+    const authorLabel = parts.length > 3 && !genericSourceDirectories.has(firstCodeSegment.toLowerCase())
+      ? firstCodeSegment
+      : fileMatch[1];
     parsed.push({
       weekNumber: Number(weekMatch[1]),
       problemKey: parts[1],
       problemTitle: metadata.title,
       problemUrl: metadata.url,
-      authorLabel: fileMatch[1],
+      authorLabel,
       language,
       filePath: item.path,
       blobSha: item.sha,
