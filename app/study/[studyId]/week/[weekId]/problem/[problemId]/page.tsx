@@ -7,7 +7,7 @@ import { useStudy } from "@/lib/study-context";
 import { useToast } from "@/lib/toast-context";
 import { initials, languageExtension } from "@/lib/utils";
 import type { ProblemStatus } from "@/lib/types";
-import { Check, ChevronRight, ExternalLink, Github, Home, MessageCircle, Save } from "lucide-react";
+import { Check, ChevronRight, ExternalLink, Github, Home, MessageCircle, Presentation, Save } from "lucide-react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useParams } from "next/navigation";
@@ -52,14 +52,28 @@ function ProblemContent() {
   const [commentKind, setCommentKind] = useState<"feedback" | "question">("feedback");
   const [commentPending, setCommentPending] = useState(false);
   const hydrated = useRef(false);
+  const editorDraftKey = `algomate:draft:solution:${params.problemId}:${user?.id ?? "anonymous"}`;
 
   useEffect(() => {
     if (hydrated.current || loading) return;
-    if (mine) {
-      setLanguage(mine.language); setCode(mine.code); setExplanation(mine.explanation); setComplexity(mine.complexity); setStatus(mine.status); setSelectedId(mine.id);
+    try {
+      const stored = window.localStorage.getItem(editorDraftKey);
+      if (stored) {
+        const draft = JSON.parse(stored) as { language: string; code: string; explanation: string; complexity: string; status: ProblemStatus };
+        setLanguage(draft.language); setCode(draft.code); setExplanation(draft.explanation); setComplexity(draft.complexity); setStatus(draft.status); setDirty(true);
+      } else if (mine) {
+        setLanguage(mine.language); setCode(mine.code); setExplanation(mine.explanation); setComplexity(mine.complexity); setStatus(mine.status); setSelectedId(mine.id);
+      }
+    } catch {
+      window.localStorage.removeItem(editorDraftKey);
     }
     hydrated.current = true;
-  }, [loading, mine]);
+  }, [editorDraftKey, loading, mine]);
+
+  useEffect(() => {
+    if (!dirty || !hydrated.current) return;
+    window.localStorage.setItem(editorDraftKey, JSON.stringify({ language, code, explanation, complexity, status }));
+  }, [code, complexity, dirty, editorDraftKey, explanation, language, status]);
 
   useEffect(() => {
     if (!selectedId) setSelectedId(problemSubmissions[0]?.id ?? importedSolutions[0]?.id ?? null);
@@ -69,12 +83,13 @@ function ProblemContent() {
     setSaving(true);
     try {
       const saved = await saveSubmission({ problemId: params.problemId, language, code, explanation, complexity, status: nextStatus });
+      window.localStorage.removeItem(editorDraftKey);
       setStatus(nextStatus); setDirty(false); setSelectedId(saved.id);
       if (!silent) toast(nextStatus === "done" ? "풀이를 완료로 표시했어요." : "코드를 저장했어요.");
     } catch (reason) {
       toast(reason instanceof Error ? reason.message : "저장하지 못했습니다.");
     } finally { setSaving(false); }
-  }, [code, complexity, explanation, language, params.problemId, saveSubmission, toast]);
+  }, [code, complexity, editorDraftKey, explanation, language, params.problemId, saveSubmission, toast]);
 
   useEffect(() => {
     if (!dirty || !hydrated.current) return;
@@ -111,6 +126,7 @@ function ProblemContent() {
         <header className="problem-toolbar">
           <div className="problem-toolbar-main"><h1>{problem.title}</h1><div className="problem-toolbar-meta"><span>{problem.platform}</span><span>·</span><span>{problem.difficulty || "난이도 미정"}</span><span className={`badge ${problem.required ? "required" : "optional"}`}>{problem.required ? "필수" : "선택"}</span></div></div>
           <a className="btn btn-secondary btn-sm" href={problem.url} target="_blank" rel="noreferrer">문제 원문 <ExternalLink size={13} /></a>
+          <Link className="btn btn-secondary btn-sm" href={`/study/${study.id}/week/${week.id}/problem/${problem.id}/review`}><Presentation size={14} /> 리뷰 모드</Link>
           <button className="btn btn-secondary btn-sm" onClick={() => void persist(status === "todo" ? "in_progress" : status)} disabled={saving}><Save size={14} /> {saving ? "저장 중" : dirty ? "저장" : "저장됨"}</button>
           <button className="btn btn-primary btn-sm" onClick={() => void persist("done")} disabled={saving || status === "done"}><Check size={14} /> {status === "done" ? "완료됨" : "풀이 완료"}</button>
         </header>

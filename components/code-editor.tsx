@@ -2,14 +2,14 @@
 
 import Editor from "@monaco-editor/react";
 
-export function CodeEditor({ value, language, onChange }: { value: string; language: string; onChange: (value: string) => void }) {
+export function CodeEditor({ value, language, onChange, readOnly = false }: { value: string; language: string; onChange?: (value: string) => void; readOnly?: boolean }) {
   return (
     <Editor
       height="100%"
       language={language}
       value={value}
       theme="vs-dark"
-      onChange={(next) => onChange(next ?? "")}
+      onChange={(next) => onChange?.(next ?? "")}
       loading={<div className="loading-page" style={{ minHeight: 300, background: "#1e1e28" }}><div className="spinner" /></div>}
       options={{
         minimap: { enabled: false },
@@ -23,6 +23,10 @@ export function CodeEditor({ value, language, onChange }: { value: string; langu
         wordWrap: "on",
         renderLineHighlight: "line",
         bracketPairColorization: { enabled: true },
+        readOnly,
+        domReadOnly: readOnly,
+        folding: true,
+        lineNumbersMinChars: 3,
       }}
     />
   );

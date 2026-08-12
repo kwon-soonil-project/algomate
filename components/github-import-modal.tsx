@@ -2,6 +2,7 @@
 
 import { useStudy } from "@/lib/study-context";
 import { useToast } from "@/lib/toast-context";
+import { useDraft } from "@/lib/use-draft";
 import { FolderGit2, Github, RefreshCw, Sparkles } from "lucide-react";
 import { FormEvent, useState } from "react";
 import { Modal } from "./modal";
@@ -16,9 +17,7 @@ export function GitHubImportModal({ studyId, open, onClose, initialRepoUrl = "",
 }) {
   const { syncGitHub } = useStudy();
   const { toast } = useToast();
-  const [repoUrl, setRepoUrl] = useState(initialRepoUrl);
-  const [branch, setBranch] = useState(initialBranch);
-  const [rootPath, setRootPath] = useState(initialRootPath);
+  const [draft, setDraft, clearDraft] = useDraft(`algomate:draft:github-import:${studyId}`, { repoUrl: initialRepoUrl, branch: initialBranch, rootPath: initialRootPath });
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
 
@@ -27,12 +26,13 @@ export function GitHubImportModal({ studyId, open, onClose, initialRepoUrl = "",
     try {
       const result = await syncGitHub({
         studyId,
-        repoUrl: sample ? "https://github.com/team/algostudy" : repoUrl,
-        branch: branch || "main",
-        rootPath,
+        repoUrl: sample ? "https://github.com/team/algostudy" : draft.repoUrl,
+        branch: draft.branch || "main",
+        rootPath: draft.rootPath,
         sample,
       });
       toast(`${result.weeks}개 주차에서 ${result.solutions}개 코드를 가져왔어요.`);
+      clearDraft();
       onClose();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "GitHub 저장소를 가져오지 못했습니다.");
@@ -56,19 +56,19 @@ export function GitHubImportModal({ studyId, open, onClose, initialRepoUrl = "",
         </div>
         <label className="form-group">
           <span className="form-label">저장소 주소</span>
-          <input className="input" type="url" value={repoUrl} onChange={(event) => setRepoUrl(event.target.value)} placeholder="https://github.com/team/algostudy" required />
+          <input className="input" type="url" value={draft.repoUrl} onChange={(event) => setDraft((current) => ({ ...current, repoUrl: event.target.value }))} placeholder="https://github.com/team/algostudy" required />
           <span className="form-hint">공개 저장소는 URL만으로 가져옵니다. 비공개 저장소는 서버의 읽기 전용 토큰을 사용합니다.</span>
         </label>
         <div className="github-fields">
-          <label className="form-group"><span className="form-label">브랜치</span><input className="input" value={branch} onChange={(event) => setBranch(event.target.value)} placeholder="main" required /></label>
-          <label className="form-group"><span className="form-label">기준 폴더 <small>선택</small></span><input className="input" value={rootPath} onChange={(event) => setRootPath(event.target.value)} placeholder="solutions" /></label>
+          <label className="form-group"><span className="form-label">브랜치</span><input className="input" value={draft.branch} onChange={(event) => setDraft((current) => ({ ...current, branch: event.target.value }))} placeholder="main" required /></label>
+          <label className="form-group"><span className="form-label">기준 폴더 <small>선택</small></span><input className="input" value={draft.rootPath} onChange={(event) => setDraft((current) => ({ ...current, rootPath: event.target.value }))} placeholder="solutions" /></label>
         </div>
         <div className="github-info"><Github size={15} /><span>가져온 코드는 사이트에서 수정하지 않으며, 다시 동기화하면 GitHub의 최신 파일로 갱신됩니다.</span></div>
         <div className="modal-actions github-actions">
           <button type="button" className="btn btn-secondary" onClick={() => void run(true)} disabled={pending}><Sparkles size={14} /> 샘플로 확인</button>
           <span style={{ flex: 1 }} />
-          <button type="button" className="btn btn-secondary" onClick={onClose}>취소</button>
-          <button className="btn btn-primary" disabled={pending || !repoUrl.trim()}>{pending ? <><RefreshCw className="spin-icon" size={14} /> 가져오는 중</> : <><Github size={15} /> 저장소 가져오기</>}</button>
+          <button type="button" className="btn btn-secondary" onClick={() => { clearDraft(); onClose(); }}>취소</button>
+          <button className="btn btn-primary" disabled={pending || !draft.repoUrl.trim()}>{pending ? <><RefreshCw className="spin-icon" size={14} /> 가져오는 중</> : <><Github size={15} /> 저장소 가져오기</>}</button>
         </div>
       </form>
     </Modal>
