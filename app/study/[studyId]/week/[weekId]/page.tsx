@@ -2,11 +2,13 @@
 
 import { AppShell } from "@/components/app-shell";
 import { CreateProblemModal } from "@/components/content-modals";
+import { ConfirmModal } from "@/components/confirm-modal";
 import { Protected } from "@/components/protected";
 import { useAuth } from "@/lib/auth-context";
 import { useStudy } from "@/lib/study-context";
+import { useToast } from "@/lib/toast-context";
 import { initials } from "@/lib/utils";
-import { ArrowUpRight, CalendarDays, ChevronRight, Circle, Github, Home, Plus, Presentation } from "lucide-react";
+import { ArrowUpRight, CalendarDays, ChevronRight, Circle, Github, Home, Plus, Presentation, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useState } from "react";
@@ -16,14 +18,30 @@ export default function WeekPage() { return <Protected><WeekContent /></Protecte
 function WeekContent() {
   const params = useParams<{ studyId: string; weekId: string }>();
   const { user } = useAuth();
-  const { studies, weeks, problems, submissions, githubSolutions, loading } = useStudy();
+  const { studies, weeks, problems, submissions, githubSolutions, deleteProblem, loading } = useStudy();
+  const { toast } = useToast();
   const [problemOpen, setProblemOpen] = useState(false);
+  const [deletingProblemId, setDeletingProblemId] = useState<string | null>(null);
+  const [deletePending, setDeletePending] = useState(false);
   const study = studies.find((item) => item.id === params.studyId);
   const week = weeks.find((item) => item.id === params.weekId && item.studyId === params.studyId);
   const weekProblems = problems.filter((item) => item.weekId === params.weekId);
+  const deletingProblem = weekProblems.find((item) => item.id === deletingProblemId);
 
   if (loading) return <AppShell><div className="loading-page"><div className="spinner" /></div></AppShell>;
   if (!study || !week) return <AppShell><div className="page"><div className="empty-state"><h3>주차를 찾을 수 없어요</h3><Link className="btn btn-primary" href="/dashboard">대시보드로</Link></div></div></AppShell>;
+
+  async function confirmDeleteProblem() {
+    if (!deletingProblem) return;
+    setDeletePending(true);
+    try {
+      await deleteProblem(deletingProblem.id);
+      toast(`${deletingProblem.title} 문제를 삭제했어요.`);
+      setDeletingProblemId(null);
+    } catch (reason) {
+      toast(reason instanceof Error ? reason.message : "문제를 삭제하지 못했습니다.");
+    } finally { setDeletePending(false); }
+  }
 
   return (
     <AppShell breadcrumb={<><Home size={14} /><ChevronRight size={13} /><Link href={`/study/${study.id}`}>{study.name}</Link><ChevronRight size={13} /><strong>{week.weekNumber}주차</strong></>}>
@@ -52,12 +70,14 @@ function WeekContent() {
               <ChevronRight size={16} color="#a2a4b1" />
             </Link>
             <Link className="review-row-link" href={`${problemUrl}/review`} title={`${problem.title} 리뷰 모드`} aria-label={`${problem.title} 리뷰 모드`}><Presentation size={15} /><span>리뷰</span></Link>
+            {study.role !== "member" && <button className="problem-delete-button" type="button" title={`${problem.title} 삭제`} aria-label={`${problem.title} 삭제`} onClick={() => setDeletingProblemId(problem.id)}><Trash2 size={14} /></button>}
           </div>;
         })}</div> : <div className="empty-state"><span className="empty-icon"><Circle size={22} /></span><h3>아직 문제가 없어요</h3><p>외부 문제 링크를 등록해 이번 주 학습을 시작하세요.</p>{study.role !== "member" && <button className="btn btn-primary" onClick={() => setProblemOpen(true)}><Plus size={15} /> 첫 문제 등록</button>}</div>}
 
         {weekProblems.length > 0 && <div style={{ marginTop: 18, color: "#9194a3", fontSize: 11 }}><ArrowUpRight size={13} style={{ verticalAlign: -2, marginRight: 5 }} />문제를 열면 원문 링크와 코드 에디터를 함께 이용할 수 있어요.</div>}
       </div>
       <CreateProblemModal weekId={week.id} open={problemOpen} onClose={() => setProblemOpen(false)} />
+      <ConfirmModal open={Boolean(deletingProblem)} title="문제 삭제" description={`“${deletingProblem?.title ?? ""}” 문제와 팀원 풀이, 피드백을 모두 삭제할까요?`} confirmLabel="문제 삭제" pending={deletePending} onClose={() => setDeletingProblemId(null)} onConfirm={confirmDeleteProblem} />
     </AppShell>
   );
 }

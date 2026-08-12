@@ -4,6 +4,7 @@ import { AppShell } from "@/components/app-shell";
 import { CreateWeekModal } from "@/components/content-modals";
 import { GitHubImportModal } from "@/components/github-import-modal";
 import { Protected } from "@/components/protected";
+import { StudyManagementModal } from "@/components/study-management-modal";
 import { useAuth } from "@/lib/auth-context";
 import { useStudy } from "@/lib/study-context";
 import { useToast } from "@/lib/toast-context";
@@ -22,6 +23,7 @@ function StudyContent() {
   const { toast } = useToast();
   const [weekOpen, setWeekOpen] = useState(false);
   const [githubOpen, setGithubOpen] = useState(false);
+  const [managementOpen, setManagementOpen] = useState(false);
   const study = studies.find((item) => item.id === params.studyId);
   const studyWeeks = weeks.filter((week) => week.studyId === params.studyId).sort((a,b) => b.weekNumber - a.weekNumber);
   const studyMembers = members.filter((member) => member.studyId === params.studyId);
@@ -40,7 +42,7 @@ function StudyContent() {
         <section className="study-hero">
           <span className={`study-card-icon study-dot ${study.color}`}>{initials(study.name)}</span>
           <div><h1>{study.name}</h1><p>{study.description}</p></div>
-          <div className="study-meta-actions"><button className="btn btn-secondary btn-sm" onClick={copyInvite}><Copy size={14} /> 초대 코드</button>{study.role !== "member" && <><button className="btn btn-secondary btn-sm" onClick={() => setGithubOpen(true)}>{study.githubRepoUrl ? <RefreshCw size={14} /> : <Github size={14} />} {study.githubRepoUrl ? "GitHub 동기화" : "GitHub 가져오기"}</button><button className="btn btn-secondary btn-sm" title="설정은 다음 버전에서 제공됩니다"><Settings size={14} /> 관리</button></>}</div>
+          <div className="study-meta-actions"><button className="btn btn-secondary btn-sm" onClick={copyInvite}><Copy size={14} /> 초대 코드</button>{study.role !== "member" && <><button className="btn btn-secondary btn-sm" onClick={() => setGithubOpen(true)}>{study.githubRepoUrl ? <RefreshCw size={14} /> : <Github size={14} />} {study.githubRepoUrl ? "GitHub 동기화" : "GitHub 가져오기"}</button><button className="btn btn-secondary btn-sm" onClick={() => setManagementOpen(true)}><Settings size={14} /> 관리</button></>}</div>
         </section>
 
         <nav className="tab-list"><span className="tab active">주차별 학습</span><span className="tab">멤버 <b>{studyMembers.length}</b></span></nav>
@@ -76,6 +78,7 @@ function StudyContent() {
       </div>
       <CreateWeekModal studyId={study.id} open={weekOpen} onClose={() => setWeekOpen(false)} />
       <GitHubImportModal studyId={study.id} open={githubOpen} onClose={() => setGithubOpen(false)} initialRepoUrl={study.githubRepoUrl} initialBranch={study.githubBranch} initialRootPath={study.githubRootPath} />
+      <StudyManagementModal study={study} members={studyMembers} currentUserId={user!.id} open={managementOpen} onClose={() => setManagementOpen(false)} />
     </AppShell>
   );
 }

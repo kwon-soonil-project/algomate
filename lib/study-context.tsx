@@ -23,6 +23,10 @@ interface StudyContextValue extends StudyState {
   joinStudy: (code: string) => Promise<Study>;
   createWeek: (input: CreateWeekInput) => Promise<Week>;
   createProblem: (input: CreateProblemInput) => Promise<Problem>;
+  deleteProblem: (problemId: string) => Promise<void>;
+  removeMember: (studyId: string, memberId: string) => Promise<void>;
+  transferOwnership: (studyId: string, newOwnerUserId: string) => Promise<void>;
+  deleteStudy: (studyId: string) => Promise<void>;
   saveSubmission: (input: SaveSubmissionInput) => Promise<Submission>;
   addComment: (submissionId: string, body: string, kind: Comment["kind"]) => Promise<Comment>;
   syncGitHub: (input: SyncGitHubInput) => Promise<SyncGitHubResult>;
@@ -47,6 +51,36 @@ function readDemoState(): StudyState {
 
 function persistDemoState(state: StudyState) {
   window.localStorage.setItem(DEMO_STATE_KEY, JSON.stringify(state));
+}
+
+function stateWithoutProblem(current: StudyState, problemId: string): StudyState {
+  const submissionIds = new Set(current.submissions.filter((item) => item.problemId === problemId).map((item) => item.id));
+  return {
+    ...current,
+    problems: current.problems.filter((item) => item.id !== problemId),
+    submissions: current.submissions.filter((item) => item.problemId !== problemId),
+    comments: current.comments.filter((item) => !submissionIds.has(item.submissionId)),
+    githubSolutions: current.githubSolutions.filter((item) => item.problemId !== problemId),
+  };
+}
+
+function stateWithoutStudy(current: StudyState, studyId: string): StudyState {
+  const weekIds = new Set(current.weeks.filter((item) => item.studyId === studyId).map((item) => item.id));
+  const problemIds = new Set(current.problems.filter((item) => weekIds.has(item.weekId)).map((item) => item.id));
+  const submissionIds = new Set(current.submissions.filter((item) => problemIds.has(item.problemId)).map((item) => item.id));
+  return {
+    studies: current.studies.filter((item) => item.id !== studyId),
+    members: current.members.filter((item) => item.studyId !== studyId),
+    weeks: current.weeks.filter((item) => item.studyId !== studyId),
+    problems: current.problems.filter((item) => !problemIds.has(item.id)),
+    submissions: current.submissions.filter((item) => !problemIds.has(item.problemId)),
+    comments: current.comments.filter((item) => !submissionIds.has(item.submissionId)),
+    githubSolutions: current.githubSolutions.filter((item) => !problemIds.has(item.problemId)),
+  };
+}
+
+function isMissingManagementFunction(error: { code?: string; message?: string }) {
+  return error.code === "PGRST202" || error.message?.includes("schema cache") === true;
 }
 
 export function StudyProvider({ children }: { children: React.ReactNode }) {
@@ -261,6 +295,107 @@ export function StudyProvider({ children }: { children: React.ReactNode }) {
     return problem;
   }, [isDemo, supabase, updateDemo, user]);
 
+  const deleteProblem = useCallback(async (problemId: string) => {
+    if (!user) throw new Error("로그인이 필요합니다.");
+    const problem = state.problems.find((item) => item.id === problemId);
+    const week = problem ? state.weeks.find((item) => item.id === problem.weekId) : undefined;
+    const study = week ? state.studies.find((item) => item.id === week.studyId) : undefined;
+    if (!problem || !study) throw new Error("문제를 찾을 수 없습니다.");
+    if (study.role === "member") throw new Error("방장 또는 운영진만 문제를 삭제할 수 있습니다.");
+
+    if (isDemo) {
+      updateDemo((current) => [stateWithoutProblem(current, problemId), undefined]);
+      return;
+    }
+    const { error: deleteError } = await supabase!.from("problems").delete().eq("id", problemId);
+    if (deleteError) throw deleteError;
+    setState((current) => stateWithoutProblem(current, problemId));
+  }, [isDemo, state.problems, state.studies, state.weeks, supabase, updateDemo, user]);
+
+  const removeMember = useCallback(async (studyId: string, memberId: string) => {
+    if (!user) throw new Error("로그인이 필요합니다.");
+    const study = state.studies.find((item) => item.id === studyId);
+    const target = state.members.find((item) => item.id === memberId && item.studyId === studyId);
+    if (!study || !target) throw new Error("팀원을 찾을 수 없습니다.");
+    if (target.userId === user.id) throw new Error("자기 자신은 강퇴할 수 없습니다.");
+    if (target.role === "owner") throw new Error("방장은 강퇴할 수 없습니다.");
+    if (study.role === "member" || (study.role === "admin" && target.role !== "member")) throw new Error("해당 팀원을 강퇴할 권한이 없습니다.");
+
+    if (isDemo) {
+      updateDemo((current) => [{
+        ...current,
+        studies: current.studies.map((item) => item.id === studyId ? { ...item, memberCount: Math.max(1, item.memberCount - 1) } : item),
+        members: current.members.filter((item) => item.id !== memberId),
+      }, undefined]);
+      return;
+    }
+
+    const { error: rpcError } = await supabase!.rpc("remove_study_member", { p_study_id: studyId, p_member_id: memberId });
+    if (rpcError && !isMissingManagementFunction(rpcError)) throw rpcError;
+    if (rpcError) {
+      const { error: deleteError } = await supabase!.from("study_members").delete().eq("id", memberId).eq("study_id", studyId);
+      if (deleteError) throw deleteError;
+    }
+    await loadRemoteState();
+  }, [isDemo, loadRemoteState, state.members, state.studies, supabase, updateDemo, user]);
+
+  const transferOwnership = useCallback(async (studyId: string, newOwnerUserId: string) => {
+    if (!user) throw new Error("로그인이 필요합니다.");
+    const study = state.studies.find((item) => item.id === studyId);
+    const target = state.members.find((item) => item.studyId === studyId && item.userId === newOwnerUserId);
+    const currentMember = state.members.find((item) => item.studyId === studyId && item.userId === user.id);
+    if (!study || study.role !== "owner") throw new Error("방장만 방장을 위임할 수 있습니다.");
+    if (!target || target.userId === user.id) throw new Error("위임할 팀원을 확인해 주세요.");
+    if (!currentMember) throw new Error("현재 방장 정보를 찾을 수 없습니다.");
+
+    if (isDemo) {
+      updateDemo((current) => [{
+        ...current,
+        studies: current.studies.map((item) => item.id === studyId ? { ...item, createdBy: target.userId, role: "admin" as const } : item),
+        members: current.members.map((item) => item.studyId !== studyId ? item : item.userId === target.userId ? { ...item, role: "owner" as const } : item.userId === user.id ? { ...item, role: "admin" as const } : item),
+      }, undefined]);
+      return;
+    }
+
+    const { error: rpcError } = await supabase!.rpc("transfer_study_owner", { p_study_id: studyId, p_new_owner_id: target.userId });
+    if (rpcError && !isMissingManagementFunction(rpcError)) throw rpcError;
+    if (rpcError) {
+      const previousTargetRole = target.role;
+      const { error: promoteError } = await supabase!.from("study_members").update({ role: "owner" }).eq("id", target.id).eq("study_id", studyId);
+      if (promoteError) throw promoteError;
+      const { error: studyError } = await supabase!.from("studies").update({ created_by: target.userId }).eq("id", studyId);
+      if (studyError) {
+        await supabase!.from("study_members").update({ role: previousTargetRole }).eq("id", target.id);
+        throw studyError;
+      }
+      const { error: demoteError } = await supabase!.from("study_members").update({ role: "admin" }).eq("id", currentMember.id).eq("study_id", studyId);
+      if (demoteError) {
+        await supabase!.from("studies").update({ created_by: user.id }).eq("id", studyId);
+        await supabase!.from("study_members").update({ role: previousTargetRole }).eq("id", target.id);
+        throw demoteError;
+      }
+    }
+    await loadRemoteState();
+  }, [isDemo, loadRemoteState, state.members, state.studies, supabase, updateDemo, user]);
+
+  const deleteStudy = useCallback(async (studyId: string) => {
+    if (!user) throw new Error("로그인이 필요합니다.");
+    const study = state.studies.find((item) => item.id === studyId);
+    if (!study || study.role !== "owner") throw new Error("방장만 스터디를 삭제할 수 있습니다.");
+
+    if (isDemo) {
+      updateDemo((current) => [stateWithoutStudy(current, studyId), undefined]);
+      return;
+    }
+    const { error: rpcError } = await supabase!.rpc("delete_owned_study", { p_study_id: studyId });
+    if (rpcError && !isMissingManagementFunction(rpcError)) throw rpcError;
+    if (rpcError) {
+      const { error: deleteError } = await supabase!.from("studies").delete().eq("id", studyId);
+      if (deleteError) throw deleteError;
+    }
+    setState((current) => stateWithoutStudy(current, studyId));
+  }, [isDemo, state.studies, supabase, updateDemo, user]);
+
   const saveSubmission = useCallback(async (input: SaveSubmissionInput) => {
     if (!user) throw new Error("로그인이 필요합니다.");
     if (isDemo) return updateDemo((current) => {
@@ -415,7 +550,7 @@ export function StudyProvider({ children }: { children: React.ReactNode }) {
   }, [isDemo, loadRemoteState, state.problems, state.studies, state.weeks, supabase, updateDemo, user]);
 
   return (
-    <StudyContext.Provider value={{ ...state, loading, error, refresh, createStudy, joinStudy, createWeek, createProblem, saveSubmission, addComment, syncGitHub }}>
+    <StudyContext.Provider value={{ ...state, loading, error, refresh, createStudy, joinStudy, createWeek, createProblem, deleteProblem, removeMember, transferOwnership, deleteStudy, saveSubmission, addComment, syncGitHub }}>
       {children}
     </StudyContext.Provider>
   );
