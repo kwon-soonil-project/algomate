@@ -14,6 +14,7 @@ export const demoState: StudyState = {
       createdAt: "2026-07-01T10:00:00.000Z",
       role: "owner",
       memberCount: 6,
+      githubAutoApproveClaims: false,
     },
     {
       id: "study-codingtest",
@@ -60,4 +61,5 @@ export const demoState: StudyState = {
     { id: "comment-2", submissionId: "submission-1", userId: "user-jun", userName: "준호", body: "설명이 직관적이라 이해하기 좋았습니다 🙌", kind: "feedback", createdAt: "2026-08-11T14:20:00.000Z" },
   ],
   githubSolutions: [],
+  githubComments: [],
 };

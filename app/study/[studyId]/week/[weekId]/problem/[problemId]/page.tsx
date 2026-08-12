@@ -1,6 +1,7 @@
 "use client";
 
 import { AppShell } from "@/components/app-shell";
+import { GitHubSolutionDiscussion } from "@/components/github-solution-discussion";
 import { Protected } from "@/components/protected";
 import { useAuth } from "@/lib/auth-context";
 import { useStudy } from "@/lib/study-context";
@@ -31,13 +32,14 @@ export default function ProblemPage() { return <Protected><ProblemContent /></Pr
 function ProblemContent() {
   const params = useParams<{ studyId: string; weekId: string; problemId: string }>();
   const { user } = useAuth();
-  const { studies, weeks, problems, submissions, githubSolutions, comments, saveSubmission, addComment, loading } = useStudy();
+  const { studies, members, weeks, problems, submissions, githubSolutions, comments, saveSubmission, addComment, loading } = useStudy();
   const { toast } = useToast();
   const study = studies.find((item) => item.id === params.studyId);
   const week = weeks.find((item) => item.id === params.weekId);
   const problem = problems.find((item) => item.id === params.problemId);
   const problemSubmissions = useMemo(() => submissions.filter((item) => item.problemId === params.problemId), [params.problemId, submissions]);
   const importedSolutions = useMemo(() => githubSolutions.filter((item) => item.problemId === params.problemId), [githubSolutions, params.problemId]);
+  const studyMembers = members.filter((item) => item.studyId === params.studyId);
   const mine = problemSubmissions.find((item) => item.userId === user?.id);
 
   const [language, setLanguage] = useState("python");
@@ -147,14 +149,14 @@ function ProblemContent() {
               {problemSubmissions.length || importedSolutions.length ? <><div className="submission-tabs">{problemSubmissions.map((submission, index) => <button key={submission.id} className={`submission-tab ${selected?.id === submission.id && !selectedGithub ? "active" : ""}`} onClick={() => setSelectedId(submission.id)}><span className={`avatar sm ${index % 3 === 1 ? "mint" : index % 3 === 2 ? "amber" : ""}`} style={{ width: 20, height: 20, fontSize: 8 }}>{initials(submission.userName)}</span>{submission.userId === user?.id ? "내 풀이" : submission.userName}</button>)}{importedSolutions.map((solution, index) => <button key={solution.id} className={`submission-tab github-tab ${selectedGithub?.id === solution.id ? "active" : ""}`} onClick={() => setSelectedId(solution.id)}><Github size={12} /><span className={`avatar sm ${index % 3 === 1 ? "mint" : ""}`} style={{ width: 20, height: 20, fontSize: 8 }}>{initials(solution.authorLabel)}</span>{solution.authorLabel}</button>)}</div>{selectedGithub ? <><div className="github-file-meta"><span><Github size={12} /> {selectedGithub.filePath}</span><a href={selectedGithub.htmlUrl} target="_blank" rel="noreferrer">원본 보기 <ExternalLink size={10} /></a></div><pre className="peer-code">{selectedGithub.code}</pre></> : selected && <><pre className="peer-code">{selected.code}</pre>{selected.explanation && <p style={{ color: "#656879", fontSize: 10, lineHeight: 1.6, marginBottom: 0 }}>{selected.explanation}</p>}</>}</> : <p className="form-hint">아직 공유된 풀이가 없습니다. 코드를 저장하면 첫 풀이가 공개돼요.</p>}
             </section>
 
-            <section className="review-section" style={{ borderBottom: 0 }}>
+            {selectedGithub ? <GitHubSolutionDiscussion solution={selectedGithub} study={study} members={studyMembers} /> : <><section className="review-section" style={{ borderBottom: 0 }}>
               <h3>피드백과 질문 <span style={{ color: "#9a9cab", fontWeight: 500 }}>{selectedComments.length}</span></h3>
-              {selectedGithub ? <p className="form-hint">GitHub에서 가져온 읽기 전용 코드입니다. 원본 파일에서 리뷰를 이어갈 수 있어요.</p> : selectedComments.length ? <div className="comment-list">{selectedComments.map((comment, index) => <article className="comment" key={comment.id}><span className={`avatar sm ${index % 3 === 1 ? "mint" : index % 3 === 2 ? "amber" : ""}`}>{initials(comment.userName)}</span><div className="comment-body"><div className="comment-meta"><strong>{comment.userName}</strong><span className="comment-kind">{comment.kind === "question" ? "질문" : "피드백"}</span><time>{new Date(comment.createdAt).toLocaleDateString("ko-KR", { month: "short", day: "numeric" })}</time></div><p>{comment.body}</p></div></article>)}</div> : <p className="form-hint">아직 댓글이 없어요. 첫 피드백을 남겨 보세요.</p>}
+              {selectedComments.length ? <div className="comment-list">{selectedComments.map((comment, index) => <article className="comment" key={comment.id}><span className={`avatar sm ${index % 3 === 1 ? "mint" : index % 3 === 2 ? "amber" : ""}`}>{initials(comment.userName)}</span><div className="comment-body"><div className="comment-meta"><strong>{comment.userName}</strong><span className="comment-kind">{comment.kind === "question" ? "질문" : "피드백"}</span><time>{new Date(comment.createdAt).toLocaleDateString("ko-KR", { month: "short", day: "numeric" })}</time></div><p>{comment.body}</p></div></article>)}</div> : <p className="form-hint">아직 댓글이 없어요. 첫 피드백을 남겨 보세요.</p>}
             </section>
             <form className="comment-form" onSubmit={submitComment}>
-              <textarea className="textarea" value={commentBody} onChange={(event) => setCommentBody(event.target.value)} placeholder={selectedGithub ? "GitHub 원본 파일에서 리뷰해 주세요." : selected ? `${selected.userName}님의 풀이에 의견을 남겨 주세요.` : "먼저 코드를 저장해 주세요."} disabled={!selected || Boolean(selectedGithub)} />
-              <div className="comment-form-actions"><div className="kind-toggle"><button type="button" className={`kind-button ${commentKind === "feedback" ? "active" : ""}`} onClick={() => setCommentKind("feedback")}>피드백</button><button type="button" className={`kind-button ${commentKind === "question" ? "active" : ""}`} onClick={() => setCommentKind("question")}>질문</button></div><button className="btn btn-primary btn-sm" disabled={!selected || Boolean(selectedGithub) || !commentBody.trim() || commentPending}><MessageCircle size={13} /> 등록</button></div>
-            </form>
+              <textarea className="textarea" value={commentBody} onChange={(event) => setCommentBody(event.target.value)} placeholder={selected ? `${selected.userName}님의 풀이에 의견을 남겨 주세요.` : "먼저 코드를 저장해 주세요."} disabled={!selected} />
+              <div className="comment-form-actions"><div className="kind-toggle"><button type="button" className={`kind-button ${commentKind === "feedback" ? "active" : ""}`} onClick={() => setCommentKind("feedback")}>피드백</button><button type="button" className={`kind-button ${commentKind === "question" ? "active" : ""}`} onClick={() => setCommentKind("question")}>질문</button></div><button className="btn btn-primary btn-sm" disabled={!selected || !commentBody.trim() || commentPending}><MessageCircle size={13} /> 등록</button></div>
+            </form></>}
           </aside>
         </div>
       </div>

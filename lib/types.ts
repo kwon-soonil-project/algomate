@@ -22,6 +22,7 @@ export interface Study {
   githubBranch?: string;
   githubRootPath?: string;
   githubSyncedAt?: string;
+  githubAutoApproveClaims?: boolean;
 }
 
 export interface StudyMember {
@@ -66,6 +67,22 @@ export interface GitHubSolution {
   htmlUrl: string;
   blobSha: string;
   syncedAt: string;
+  claimedBy?: string;
+  claimStatus?: "pending" | "approved" | "rejected";
+  claimRequestedBy?: string;
+  claimReviewedBy?: string;
+  claimRequestedAt?: string;
+  claimReviewedAt?: string;
+}
+
+export interface GitHubSolutionComment {
+  id: string;
+  githubSolutionId: string;
+  userId: string;
+  userName: string;
+  body: string;
+  kind: "feedback" | "question";
+  createdAt: string;
 }
 
 export interface GitHubImportEntry {
@@ -112,4 +129,5 @@ export interface StudyState {
   submissions: Submission[];
   comments: Comment[];
   githubSolutions: GitHubSolution[];
+  githubComments: GitHubSolutionComment[];
 }

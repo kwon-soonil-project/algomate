@@ -5,7 +5,7 @@ import { demoState } from "./demo-data";
 import { makeSampleGitHubEntries } from "./github-import";
 import { useAuth } from "./auth-context";
 import { getSupabaseBrowserClient } from "./supabase";
-import type { Comment, GitHubImportEntry, GitHubSolution, Problem, ProblemStatus, Study, StudyMember, StudyState, Submission, Week } from "./types";
+import type { Comment, GitHubImportEntry, GitHubSolution, GitHubSolutionComment, Problem, ProblemStatus, Study, StudyMember, StudyState, Submission, Week } from "./types";
 import { makeInviteCode, platformFromUrl } from "./utils";
 
 interface CreateStudyInput { name: string; description: string; color: string }
@@ -29,6 +29,10 @@ interface StudyContextValue extends StudyState {
   deleteStudy: (studyId: string) => Promise<void>;
   saveSubmission: (input: SaveSubmissionInput) => Promise<Submission>;
   addComment: (submissionId: string, body: string, kind: Comment["kind"]) => Promise<Comment>;
+  addGitHubComment: (solutionId: string, body: string, kind: GitHubSolutionComment["kind"]) => Promise<GitHubSolutionComment>;
+  requestGitHubClaim: (solutionId: string) => Promise<"pending" | "approved">;
+  reviewGitHubClaims: (solutionIds: string[], approve: boolean) => Promise<void>;
+  setGitHubAutoApprove: (studyId: string, enabled: boolean) => Promise<void>;
   syncGitHub: (input: SyncGitHubInput) => Promise<SyncGitHubResult>;
 }
 
@@ -43,7 +47,7 @@ function readDemoState(): StudyState {
   try {
     const stored = window.localStorage.getItem(DEMO_STATE_KEY);
     const parsed = stored ? JSON.parse(stored) : structuredClone(demoState);
-    return { ...parsed, githubSolutions: parsed.githubSolutions ?? [] };
+    return { ...parsed, githubSolutions: parsed.githubSolutions ?? [], githubComments: parsed.githubComments ?? [] };
   } catch {
     return structuredClone(demoState);
   }
@@ -55,12 +59,14 @@ function persistDemoState(state: StudyState) {
 
 function stateWithoutProblem(current: StudyState, problemId: string): StudyState {
   const submissionIds = new Set(current.submissions.filter((item) => item.problemId === problemId).map((item) => item.id));
+  const githubSolutionIds = new Set(current.githubSolutions.filter((item) => item.problemId === problemId).map((item) => item.id));
   return {
     ...current,
     problems: current.problems.filter((item) => item.id !== problemId),
     submissions: current.submissions.filter((item) => item.problemId !== problemId),
     comments: current.comments.filter((item) => !submissionIds.has(item.submissionId)),
     githubSolutions: current.githubSolutions.filter((item) => item.problemId !== problemId),
+    githubComments: current.githubComments.filter((item) => !githubSolutionIds.has(item.githubSolutionId)),
   };
 }
 
@@ -68,6 +74,7 @@ function stateWithoutStudy(current: StudyState, studyId: string): StudyState {
   const weekIds = new Set(current.weeks.filter((item) => item.studyId === studyId).map((item) => item.id));
   const problemIds = new Set(current.problems.filter((item) => weekIds.has(item.weekId)).map((item) => item.id));
   const submissionIds = new Set(current.submissions.filter((item) => problemIds.has(item.problemId)).map((item) => item.id));
+  const githubSolutionIds = new Set(current.githubSolutions.filter((item) => problemIds.has(item.problemId)).map((item) => item.id));
   return {
     studies: current.studies.filter((item) => item.id !== studyId),
     members: current.members.filter((item) => item.studyId !== studyId),
@@ -76,6 +83,7 @@ function stateWithoutStudy(current: StudyState, studyId: string): StudyState {
     submissions: current.submissions.filter((item) => !problemIds.has(item.problemId)),
     comments: current.comments.filter((item) => !submissionIds.has(item.submissionId)),
     githubSolutions: current.githubSolutions.filter((item) => !problemIds.has(item.problemId)),
+    githubComments: current.githubComments.filter((item) => !githubSolutionIds.has(item.githubSolutionId)),
   };
 }
 
@@ -83,9 +91,16 @@ function isMissingManagementFunction(error: { code?: string; message?: string })
   return error.code === "PGRST202" || error.message?.includes("schema cache") === true;
 }
 
+function githubFeatureError(error: { code?: string; message?: string }) {
+  if (isMissingManagementFunction(error) || error.code === "PGRST205" || error.code === "42P01") {
+    return new Error("Supabase에 GitHub 소유권·피드백 마이그레이션을 먼저 적용해 주세요.");
+  }
+  return new Error(error.message || "GitHub 풀이 정보를 변경하지 못했습니다.");
+}
+
 export function StudyProvider({ children }: { children: React.ReactNode }) {
   const { user, loading: authLoading, isDemo } = useAuth();
-  const [state, setState] = useState<StudyState>({ studies: [], members: [], weeks: [], problems: [], submissions: [], comments: [], githubSolutions: [] });
+  const [state, setState] = useState<StudyState>({ studies: [], members: [], weeks: [], problems: [], submissions: [], comments: [], githubSolutions: [], githubComments: [] });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const supabase = useMemo(() => getSupabaseBrowserClient(), []);
@@ -117,11 +132,12 @@ export function StudyProvider({ children }: { children: React.ReactNode }) {
         githubBranch: item.github_branch ?? undefined,
         githubRootPath: item.github_root_path ?? undefined,
         githubSyncedAt: item.github_synced_at ?? undefined,
+        githubAutoApproveClaims: item.github_auto_approve_claims ?? false,
       } as Study] : [];
     });
 
     if (!studies.length) {
-      setState({ studies: [], members: [], weeks: [], problems: [], submissions: [], comments: [], githubSolutions: [] });
+      setState({ studies: [], members: [], weeks: [], problems: [], submissions: [], comments: [], githubSolutions: [], githubComments: [] });
       return;
     }
 
@@ -187,8 +203,21 @@ export function StudyProvider({ children }: { children: React.ReactNode }) {
     const githubSolutions: GitHubSolution[] = (githubResult.data ?? []).map((row: any) => ({
       id: row.id, problemId: row.problem_id, authorLabel: row.author_label, language: row.language,
       code: row.code, filePath: row.file_path, htmlUrl: row.html_url, blobSha: row.blob_sha, syncedAt: row.synced_at,
+      claimedBy: row.claimed_by ?? undefined, claimStatus: row.claim_status ?? undefined,
+      claimRequestedBy: row.claim_requested_by ?? undefined, claimReviewedBy: row.claim_reviewed_by ?? undefined,
+      claimRequestedAt: row.claim_requested_at ?? undefined, claimReviewedAt: row.claim_reviewed_at ?? undefined,
     }));
-    setState({ studies, members, weeks, problems, submissions, comments, githubSolutions });
+    const githubSolutionIds = githubSolutions.map((solution) => solution.id);
+    const githubCommentsResult = githubSolutionIds.length
+      ? await supabase.from("github_solution_comments").select("*, profiles(name)").in("github_solution_id", githubSolutionIds).order("created_at")
+      : { data: [], error: null };
+    const missingCommentsTable = githubCommentsResult.error?.code === "PGRST205" || githubCommentsResult.error?.code === "42P01";
+    if (githubCommentsResult.error && !missingCommentsTable) throw githubCommentsResult.error;
+    const githubComments: GitHubSolutionComment[] = (githubCommentsResult.data ?? []).map((row: any) => ({
+      id: row.id, githubSolutionId: row.github_solution_id, userId: row.user_id, userName: row.profiles?.name ?? "스터디원",
+      body: row.body, kind: row.kind, createdAt: row.created_at,
+    }));
+    setState({ studies, members, weeks, problems, submissions, comments, githubSolutions, githubComments });
   }, [supabase, userId]);
 
   const refresh = useCallback(async () => {
@@ -207,7 +236,7 @@ export function StudyProvider({ children }: { children: React.ReactNode }) {
     if (authLoading) return;
     if (!userId) {
       loadedUserIdRef.current = null;
-      setState({ studies: [], members: [], weeks: [], problems: [], submissions: [], comments: [], githubSolutions: [] });
+      setState({ studies: [], members: [], weeks: [], problems: [], submissions: [], comments: [], githubSolutions: [], githubComments: [] });
       setLoading(false);
       return;
     }
@@ -223,6 +252,8 @@ export function StudyProvider({ children }: { children: React.ReactNode }) {
       .channel(`algomate-live-${userId}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "submissions" }, () => void loadRemoteState())
       .on("postgres_changes", { event: "*", schema: "public", table: "comments" }, () => void loadRemoteState())
+      .on("postgres_changes", { event: "*", schema: "public", table: "github_solutions" }, () => void loadRemoteState())
+      .on("postgres_changes", { event: "*", schema: "public", table: "github_solution_comments" }, () => void loadRemoteState())
       .subscribe();
     return () => { void supabase.removeChannel(channel); };
   }, [loadRemoteState, supabase, userId]);
@@ -424,6 +455,91 @@ export function StudyProvider({ children }: { children: React.ReactNode }) {
     return comment;
   }, [isDemo, supabase, updateDemo, user]);
 
+  const addGitHubComment = useCallback(async (solutionId: string, body: string, kind: GitHubSolutionComment["kind"]) => {
+    if (!user) throw new Error("로그인이 필요합니다.");
+    if (!body.trim()) throw new Error("댓글 내용을 입력해 주세요.");
+    if (isDemo) return updateDemo((current) => {
+      if (!current.githubSolutions.some((item) => item.id === solutionId)) throw new Error("GitHub 풀이를 찾을 수 없습니다.");
+      const comment: GitHubSolutionComment = {
+        id: uid("github-comment"), githubSolutionId: solutionId, userId: user.id, userName: user.name,
+        body: body.trim(), kind, createdAt: new Date().toISOString(),
+      };
+      return [{ ...current, githubComments: [...current.githubComments, comment] }, comment];
+    });
+    const { data, error: insertError } = await supabase!.from("github_solution_comments").insert({
+      github_solution_id: solutionId, user_id: user.id, body: body.trim(), kind,
+    }).select().single();
+    if (insertError) throw githubFeatureError(insertError);
+    const comment: GitHubSolutionComment = {
+      id: data.id, githubSolutionId: data.github_solution_id, userId: data.user_id, userName: user.name,
+      body: data.body, kind: data.kind, createdAt: data.created_at,
+    };
+    setState((current) => ({ ...current, githubComments: [...current.githubComments, comment] }));
+    return comment;
+  }, [isDemo, supabase, updateDemo, user]);
+
+  const requestGitHubClaim = useCallback(async (solutionId: string) => {
+    if (!user) throw new Error("로그인이 필요합니다.");
+    if (isDemo) return updateDemo((current) => {
+      const solution = current.githubSolutions.find((item) => item.id === solutionId);
+      const problem = solution ? current.problems.find((item) => item.id === solution.problemId) : undefined;
+      const week = problem ? current.weeks.find((item) => item.id === problem.weekId) : undefined;
+      const study = week ? current.studies.find((item) => item.id === week.studyId) : undefined;
+      if (!solution || !study) throw new Error("GitHub 풀이를 찾을 수 없습니다.");
+      if (solution.claimStatus === "approved" && solution.claimedBy !== user.id) throw new Error("이미 다른 팀원의 풀이로 승인되었습니다.");
+      if (solution.claimStatus === "pending" && solution.claimRequestedBy !== user.id) throw new Error("다른 팀원의 승인 요청이 대기 중입니다.");
+      const status = study.githubAutoApproveClaims ? "approved" as const : "pending" as const;
+      const now = new Date().toISOString();
+      const githubSolutions = current.githubSolutions.map((item) => item.id === solutionId ? {
+        ...item, claimStatus: status, claimRequestedBy: user.id, claimRequestedAt: now,
+        claimedBy: status === "approved" ? user.id : undefined,
+        claimReviewedBy: status === "approved" ? user.id : undefined,
+        claimReviewedAt: status === "approved" ? now : undefined,
+      } : item);
+      return [{ ...current, githubSolutions }, status];
+    });
+    const { data, error: rpcError } = await supabase!.rpc("request_github_solution_claim", { p_solution_id: solutionId });
+    if (rpcError) throw githubFeatureError(rpcError);
+    await loadRemoteState();
+    return data === "approved" ? "approved" as const : "pending" as const;
+  }, [isDemo, loadRemoteState, supabase, updateDemo, user]);
+
+  const reviewGitHubClaims = useCallback(async (solutionIds: string[], approve: boolean) => {
+    if (!user) throw new Error("로그인이 필요합니다.");
+    const uniqueIds = [...new Set(solutionIds)];
+    if (!uniqueIds.length) return;
+    if (isDemo) {
+      updateDemo((current) => {
+        const now = new Date().toISOString();
+        const githubSolutions = current.githubSolutions.map((item) => uniqueIds.includes(item.id) && item.claimStatus === "pending" ? {
+          ...item,
+          claimStatus: approve ? "approved" as const : "rejected" as const,
+          claimedBy: approve ? item.claimRequestedBy : undefined,
+          claimReviewedBy: user.id,
+          claimReviewedAt: now,
+        } : item);
+        return [{ ...current, githubSolutions }, undefined];
+      });
+      return;
+    }
+    const { error: rpcError } = await supabase!.rpc("review_github_solution_claims", { p_solution_ids: uniqueIds, p_approve: approve });
+    if (rpcError) throw githubFeatureError(rpcError);
+    await loadRemoteState();
+  }, [isDemo, loadRemoteState, supabase, updateDemo, user]);
+
+  const setGitHubAutoApprove = useCallback(async (studyId: string, enabled: boolean) => {
+    if (!user) throw new Error("로그인이 필요합니다.");
+    const study = state.studies.find((item) => item.id === studyId);
+    if (!study || study.role === "member") throw new Error("설정을 변경할 권한이 없습니다.");
+    if (isDemo) {
+      updateDemo((current) => [{ ...current, studies: current.studies.map((item) => item.id === studyId ? { ...item, githubAutoApproveClaims: enabled } : item) }, undefined]);
+      return;
+    }
+    const { error: rpcError } = await supabase!.rpc("set_github_claim_auto_approve", { p_study_id: studyId, p_enabled: enabled });
+    if (rpcError) throw githubFeatureError(rpcError);
+    setState((current) => ({ ...current, studies: current.studies.map((item) => item.id === studyId ? { ...item, githubAutoApproveClaims: enabled } : item) }));
+  }, [isDemo, state.studies, supabase, updateDemo, user]);
+
   const syncGitHub = useCallback(async (input: SyncGitHubInput) => {
     if (!user) throw new Error("로그인이 필요합니다.");
     const repoUrl = input.repoUrl.trim().replace(/\.git$/, "");
@@ -550,7 +666,7 @@ export function StudyProvider({ children }: { children: React.ReactNode }) {
   }, [isDemo, loadRemoteState, state.problems, state.studies, state.weeks, supabase, updateDemo, user]);
 
   return (
-    <StudyContext.Provider value={{ ...state, loading, error, refresh, createStudy, joinStudy, createWeek, createProblem, deleteProblem, removeMember, transferOwnership, deleteStudy, saveSubmission, addComment, syncGitHub }}>
+    <StudyContext.Provider value={{ ...state, loading, error, refresh, createStudy, joinStudy, createWeek, createProblem, deleteProblem, removeMember, transferOwnership, deleteStudy, saveSubmission, addComment, addGitHubComment, requestGitHubClaim, reviewGitHubClaims, setGitHubAutoApprove, syncGitHub }}>
       {children}
     </StudyContext.Provider>
   );

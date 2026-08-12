@@ -1,6 +1,7 @@
 "use client";
 
 import { AppShell } from "@/components/app-shell";
+import { GitHubSolutionDiscussion } from "@/components/github-solution-discussion";
 import { Protected } from "@/components/protected";
 import { useStudy } from "@/lib/study-context";
 import { initials } from "@/lib/utils";
@@ -24,6 +25,7 @@ interface ReviewSolution {
   filePath?: string;
   updatedAt: string;
   submissionId?: string;
+  githubSolutionId?: string;
 }
 
 export default function ReviewPage() {
@@ -32,7 +34,7 @@ export default function ReviewPage() {
 
 function ReviewContent() {
   const params = useParams<{ studyId: string; weekId: string; problemId: string }>();
-  const { studies, weeks, problems, submissions, githubSolutions, comments, loading } = useStudy();
+  const { studies, members, weeks, problems, submissions, githubSolutions, comments, loading } = useStudy();
   const study = studies.find((item) => item.id === params.studyId);
   const week = weeks.find((item) => item.id === params.weekId);
   const problem = problems.find((item) => item.id === params.problemId);
@@ -60,6 +62,7 @@ function ReviewContent() {
       sourceUrl: item.htmlUrl,
       filePath: item.filePath,
       updatedAt: item.syncedAt,
+      githubSolutionId: item.id,
     })),
   ], [githubSolutions, params.problemId, submissions]);
 
@@ -80,6 +83,8 @@ function ReviewContent() {
   const primary = solutions.find((item) => item.id === primaryId) ?? solutions[0];
   const comparison = solutions.find((item) => item.id === compareId && item.id !== primary?.id);
   const primaryComments = comments.filter((item) => item.submissionId === primary?.submissionId);
+  const primaryGithub = githubSolutions.find((item) => item.id === primary?.githubSolutionId);
+  const studyMembers = members.filter((item) => item.studyId === params.studyId);
 
   if (loading) return <AppShell><div className="loading-page"><div className="spinner" /></div></AppShell>;
   if (!study || !week || !problem) return <AppShell><div className="page"><div className="empty-state"><h3>문제를 찾을 수 없어요</h3><Link className="btn btn-primary" href="/dashboard">대시보드로</Link></div></div></AppShell>;
@@ -122,7 +127,7 @@ function ReviewContent() {
 
           {!compareMode && primary && <section className="review-notes-grid">
             <article className="review-note-card"><div className="review-note-heading"><Code2 size={15} /><h2>풀이 설명</h2></div><p>{primary.explanation || "작성된 풀이 설명이 없습니다."}</p>{primary.complexity && <span className="complexity-chip">복잡도 {primary.complexity}</span>}</article>
-            <article className="review-note-card"><div className="review-note-heading"><MessageCircle size={15} /><h2>팀 피드백</h2><span>{primaryComments.length}</span></div>{primary.source === "github" ? <p>GitHub에서 가져온 코드는 원본 파일 링크에서 리뷰할 수 있어요.</p> : primaryComments.length ? <div className="review-comment-list">{primaryComments.map((comment) => <div key={comment.id}><strong>{comment.userName}</strong><span>{comment.kind === "question" ? "질문" : "피드백"}</span><p>{comment.body}</p></div>)}</div> : <p>아직 남겨진 피드백이 없습니다.</p>}</article>
+            {primaryGithub ? <GitHubSolutionDiscussion solution={primaryGithub} study={study} members={studyMembers} variant="card" /> : <article className="review-note-card"><div className="review-note-heading"><MessageCircle size={15} /><h2>팀 피드백</h2><span>{primaryComments.length}</span></div>{primaryComments.length ? <div className="review-comment-list">{primaryComments.map((comment) => <div key={comment.id}><strong>{comment.userName}</strong><span>{comment.kind === "question" ? "질문" : "피드백"}</span><p>{comment.body}</p></div>)}</div> : <p>아직 남겨진 피드백이 없습니다.</p>}</article>}
           </section>}
         </> : <div className="review-empty"><span><Users size={26} /></span><h2>아직 볼 수 있는 풀이가 없어요</h2><p>팀원이 코드를 저장하거나 GitHub 저장소를 동기화하면 이곳에서 함께 볼 수 있습니다.</p><Link className="btn btn-primary" href={editorUrl}>첫 풀이 작성하기</Link></div>}
       </div>

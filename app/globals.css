@@ -491,6 +491,42 @@ a { color: inherit; text-decoration: none; }
 .github-connected-head p { margin: 0; max-width: 155px; overflow: hidden; color: #77798a; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 .github-logo { width: 34px; height: 34px; border-radius: 9px; display: grid; place-items: center; color: white; background: #292735; }
 .github-connected-meta { margin-top: 13px; padding-top: 11px; border-top: 1px solid #eceaf4; display: flex; align-items: center; justify-content: space-between; color: #8b8e9d; font-size: 9px; }
+.github-discussion.pane { border-top: 1px solid var(--line); }
+.github-discussion.pane .github-claim-box, .github-discussion.pane .github-feedback-box { padding: 16px 18px; }
+.github-discussion.pane .github-claim-box { border-bottom: 1px solid var(--line); }
+.github-discussion.card { border: 1px solid var(--line); border-radius: 13px; overflow: hidden; background: white; box-shadow: var(--shadow-sm); }
+.github-discussion.card .github-claim-box, .github-discussion.card .github-feedback-box { padding: 17px; }
+.github-discussion.card .github-claim-box { border-bottom: 1px solid var(--line); background: #fbfaff; }
+.github-discussion-heading { margin-bottom: 11px; display: flex; align-items: center; gap: 6px; color: #55586a; }
+.github-discussion-heading strong { font-size: 11px; }
+.github-discussion-heading > span { margin-left: auto; color: #999baa; font-size: 9px; }
+.claim-state { min-height: 48px; padding: 10px; border: 1px solid #e8e6ed; border-radius: 9px; display: flex; align-items: center; gap: 8px; color: #777a8a; background: #fafafd; }
+.claim-state > span:first-of-type { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 3px; }
+.claim-state strong { color: #535667; font-size: 10px; }
+.claim-state small { color: #9698a7; font-size: 8px; line-height: 1.45; }
+.claim-state.approved { color: #31856f; border-color: #cde9e0; background: #f1fbf8; }
+.claim-state.approved.mine { color: #5d51bb; border-color: #dcd6fa; background: var(--violet-soft); }
+.claim-state.pending { color: #a77a2d; border-color: #efdfbb; background: #fffaf0; }
+.claim-review-actions { flex: 0 0 auto; display: flex; gap: 5px; }
+.claim-review-actions .btn { min-height: 29px; padding-inline: 8px; font-size: 9px; }
+.github-feedback-box .comment-list { margin-bottom: 11px; }
+.github-comment-form { margin-top: 11px; }
+.github-comment-form textarea { min-height: 64px; font-size: 10px; }
+.auto-approve-setting { padding: 11px; border: 1px solid #dfdced; border-radius: 10px; display: flex; align-items: center; gap: 9px; background: #faf9ff; cursor: pointer; }
+.auto-approve-icon { width: 30px; height: 30px; flex: 0 0 auto; border-radius: 8px; display: grid; place-items: center; color: #6b5ec8; background: var(--violet-soft); }
+.auto-approve-setting > span:nth-child(2) { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 3px; }
+.auto-approve-setting strong { color: #555769; font-size: 10px; }
+.auto-approve-setting small { color: #9295a4; font-size: 8px; line-height: 1.45; }
+.auto-approve-setting input, .claim-request-list input { accent-color: var(--violet); }
+.claim-request-list { margin-top: 10px; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.claim-select-all, .claim-request-row { min-height: 38px; padding: 8px 10px; border-bottom: 1px solid #efeff3; display: flex; align-items: center; gap: 8px; cursor: pointer; }
+.claim-select-all { color: #747788; background: #f8f8fb; font-size: 9px; font-weight: 700; }
+.claim-request-row > span { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.claim-request-row strong { color: #555869; font-size: 9px; }
+.claim-request-row small { overflow: hidden; color: #989aa8; font: 8px var(--font-mono); text-overflow: ellipsis; white-space: nowrap; }
+.claim-bulk-actions { padding: 9px; display: flex; justify-content: flex-end; gap: 6px; background: #fbfbfd; }
+.management-empty { margin: 10px 0 0; padding: 11px; border-radius: 9px; color: #9698a7; background: #f7f7f9; font-size: 9px; text-align: center; }
+.management-error { margin-bottom: 13px; }
 .empty-state { padding: 55px 20px; border: 1px dashed #d9d7e2; border-radius: 13px; text-align: center; background: rgba(255,255,255,.5); }
 .empty-icon { width: 48px; height: 48px; margin: 0 auto 14px; border-radius: 14px; display: grid; place-items: center; color: var(--violet); background: var(--violet-soft); }
 .empty-state h3 { margin: 0 0 7px; font-size: 15px; }
