@@ -1,0 +1,26 @@
+0 verbose cli C:\Program Files\nodejs\node.exe C:\Users\Administrator\AppData\Roaming\npm\node_modules\npm\bin\npm-cli.js
+1 info using npm@11.11.0
+2 info using node@v26.1.0
+3 silly config load:file:C:\Users\Administrator\AppData\Roaming\npm\node_modules\npm\npmrc
+4 silly config load:file:C:\Users\Administrator\Desktop\새 폴더 (2)\project\algostudy\.npmrc
+5 silly config load:file:C:\Users\Administrator\.npmrc
+6 silly config load:file:C:\Users\Administrator\AppData\Roaming\npm\etc\npmrc
+7 verbose title npm install
+8 verbose argv "install" "--cache" ".npm-cache"
+9 verbose logfile logs-max:10 dir:C:\Users\Administrator\Desktop\새 폴더 (2)\project\algostudy\.npm-cache\_logs\2026-08-12T13_07_43_447Z-
+10 verbose logfile C:\Users\Administrator\Desktop\새 폴더 (2)\project\algostudy\.npm-cache\_logs\2026-08-12T13_07_43_447Z-debug-0.log
+11 silly logfile done cleaning log files
+12 silly packumentCache heap:4395630592 maxSize:1098907648 maxEntrySize:549453824
+13 silly idealTree buildDeps
+14 silly fetch manifest @monaco-editor/react@^4.7.0
+15 silly packumentCache full:https://registry.npmjs.org/@monaco-editor%2freact cache-miss
+16 http fetch GET https://registry.npmjs.org/npm attempt 1 failed with EACCES
+17 http fetch GET https://registry.npmjs.org/@monaco-editor%2freact attempt 1 failed with EACCES
+18 http fetch GET https://registry.npmjs.org/npm attempt 2 failed with EACCES
+19 http fetch GET https://registry.npmjs.org/@monaco-editor%2freact attempt 2 failed with EACCES
+20 http fetch GET https://registry.npmjs.org/npm attempt 3 failed with EACCES
+21 http fetch GET https://registry.npmjs.org/@monaco-editor%2freact attempt 3 failed with EACCES
+22 silly fetch manifest @supabase/supabase-js@^2.57.0
+23 silly packumentCache full:https://registry.npmjs.org/@supabase%2fsupabase-js cache-miss
+24 http fetch GET https://registry.npmjs.org/@supabase%2fsupabase-js attempt 1 failed with EACCES
+25 http fetch GET https://registry.npmjs.org/@supabase%2fsupabase-js attempt 2 failed with EACCES
